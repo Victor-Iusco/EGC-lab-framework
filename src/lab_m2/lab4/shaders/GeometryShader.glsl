@@ -63,19 +63,12 @@ void main()
     const int SURFACE_TYPE_ROTATION     = 0;
     const int SURFACE_TYPE_TRANSLATION  = 1;
 
-    // You can change the value of SURFACE_TYPE to experiment
-    // with different transformation types.
-    const int SURFACE_TYPE = SURFACE_TYPE_ROTATION;
+    // TODO(student): Rather than emitting vertices for the control
+    // points, you must emit vertices that approximate the curve itself.
+    gl_Position = Projection * View * vec4(control_p0, 1);   EmitVertex();
+    gl_Position = Projection * View * vec4(control_p1, 1);   EmitVertex();
+    gl_Position = Projection * View * vec4(control_p2, 1);   EmitVertex();
+    gl_Position = Projection * View * vec4(control_p3, 1);   EmitVertex();
+    EndPrimitive();
 
-    if (instance[0] < no_of_instances)
-    {
-        // TODO(student): Rather than emitting vertices for the control
-        // points, you must emit vertices that approximate the curve itself.
-        gl_Position = Projection * View * vec4(control_p0, 1);   EmitVertex();
-        gl_Position = Projection * View * vec4(control_p1, 1);   EmitVertex();
-        gl_Position = Projection * View * vec4(control_p2, 1);   EmitVertex();
-        gl_Position = Projection * View * vec4(control_p3, 1);   EmitVertex();
-        EndPrimitive();
-
-    }
 }
