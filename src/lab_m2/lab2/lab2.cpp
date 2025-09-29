@@ -7,6 +7,12 @@ using namespace std;
 using namespace m2;
 
 
+//Generates a random value between 0 and 1.
+inline float Rand01()
+{
+    return rand() / static_cast<float>(RAND_MAX);
+}
+
 /*
  *  To find out more about `FrameStart`, `Update`, `FrameEnd`
  *  and the order in which they are called, see `world.cpp`.
@@ -25,127 +31,254 @@ Lab2::~Lab2()
 
 void Lab2::Init()
 {
+    outputType = 0;
+
     auto camera = GetSceneCamera();
-    camera->SetPositionAndRotation(glm::vec3(0, 8, 8), glm::quat(glm::vec3(-40 * TO_RADIANS, 0, 0)));
+    camera->SetPositionAndRotation(glm::vec3(0, 2, 3.5), glm::quat(glm::vec3(-20 * TO_RADIANS, 0, 0)));
     camera->Update();
 
-    ToggleGroundPlane();
+    TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES), "ground.jpg");
 
-    // Create a shader program for surface generation
+    // Load a mesh from file into GPU memory
     {
-        Shader *shader = new Shader("SurfaceGeneration");
-        shader->AddShader(PATH_JOIN(window->props.selfDir, SOURCE_PATH::M2, "lab2", "shaders", "VertexShader.glsl"), GL_VERTEX_SHADER);
-        shader->AddShader(PATH_JOIN(window->props.selfDir, SOURCE_PATH::M2, "lab2", "shaders", "GeometryShader.glsl"), GL_GEOMETRY_SHADER);
-        shader->AddShader(PATH_JOIN(window->props.selfDir, SOURCE_PATH::M2, "lab2", "shaders", "FragmentShader.glsl"), GL_FRAGMENT_SHADER);
-        shader->CreateAndLink();
-        shaders[shader->GetName()] = shader;
+        Mesh* mesh = new Mesh("box");
+        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "box.obj");
+        meshes[mesh->GetMeshID()] = mesh;
     }
 
-    // Parameters related to surface generation
-    no_of_generated_points = 10;            // number of points on a Bezier curve
-    no_of_instances = 5;                    // number of instances (number of curves that contain the surface)
-    max_translate = 8.0f;                   // for the translation surface, it's the distance between the first and the last curve
-    max_rotate = glm::radians(360.0f);      // for the rotation surface, it's the angle between the first and the last curve
-
-    // Define control points
-    control_p0 = glm::vec3(-4.0, -2.5,  1.0);
-    control_p1 = glm::vec3(-2.5,  1.5,  1.0);
-    control_p2 = glm::vec3(-1.5,  3.0,  1.0);
-    control_p3 = glm::vec3(-4.0,  5.5,  1.0);
-
-    // Create a bogus mesh with 2 points (a line)
     {
-        vector<VertexFormat> vertices
-        {
-            VertexFormat(control_p0, glm::vec3(0, 1, 1)),
-            VertexFormat(control_p3, glm::vec3(0, 1, 0))
-        };
+        Mesh* mesh = new Mesh("plane");
+        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "plane50.obj");
+        mesh->UseMaterials(false);
+        meshes[mesh->GetMeshID()] = mesh;
+    }
 
-        vector<unsigned int> indices =
-        {
-            0, 1
-        };
+    // Load a mesh from file into GPU memory
+    {
+        Mesh* mesh = new Mesh("sphere");
+        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "sphere.obj");
+        mesh->UseMaterials(false);
+        meshes[mesh->GetMeshID()] = mesh;
+    }
 
-        meshes["surface"] = new Mesh("generated initial surface points");
-        meshes["surface"]->InitFromData(vertices, indices);
-        meshes["surface"]->SetDrawMode(GL_LINES);
+    {
+        Mesh* mesh = new Mesh("quad");
+        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "quad.obj");
+        mesh->UseMaterials(false);
+        meshes[mesh->GetMeshID()] = mesh;
+    }
+
+    LoadShader("Render2Texture");
+    LoadShader("Composition");
+    LoadShader("LightPass");
+
+    auto resolution = window->GetResolution();
+
+    frameBuffer = new FrameBuffer();
+    frameBuffer->Generate(resolution.x, resolution.y, 3);
+    //frameBuffer contains 3 textures (position, normal and color)
+
+    lightBuffer = new FrameBuffer();
+    lightBuffer->Generate(resolution.x, resolution.y, 1, false);
+    //lightBuffer contains 1 texture (light accumulation)
+
+    for (int i = 0; i < 40; ++i)
+    {
+        LightInfo lightInfo;
+
+        // TODO(student): Set lightInfo with random position, random color
+        // and a random radius for each light source.
+        // You can use the Rand01 function defined above.
+        // The chosen position is between (-10, 0, -10) and (10, 3, 10)
+        // The chosen color is between (0, 0, 0) and (1, 1, 1).
+        // The chosen radius is between 3 and 4.
+
+        lightInfo.position = glm::vec3(0.0f);
+        lightInfo.color = glm::vec3(0.0f);
+        lightInfo.radius = 1.0f;
+
+        lights.push_back(lightInfo);
     }
 }
 
 
 void Lab2::FrameStart()
 {
-    // Clears the color buffer (using the previously set color) and depth buffer
-    glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glm::ivec2 resolution = window->GetResolution();
-    // Sets the screen area where to draw
-    glViewport(0, 0, resolution.x, resolution.y);
-}
-
-
-void Lab2::RenderMeshInstanced(Mesh *mesh, Shader *shader, const glm::mat4 &modelMatrix, int instances, const glm::vec3 &color)
-{
-    if (!mesh || !shader || !shader->GetProgramID())
-        return;
-
-    // Render an object using the specified shader
-    glUseProgram(shader->program);
-
-    // Bind model matrix
-    GLint loc_model_matrix = glGetUniformLocation(shader->program, "Model");
-    glUniformMatrix4fv(loc_model_matrix, 1, GL_FALSE, glm::value_ptr(modelMatrix));
-
-    // Bind view matrix
-    glm::mat4 viewMatrix = GetSceneCamera()->GetViewMatrix();
-    int loc_view_matrix = glGetUniformLocation(shader->program, "View");
-    glUniformMatrix4fv(loc_view_matrix, 1, GL_FALSE, glm::value_ptr(viewMatrix));
-
-    // Bind projection matrix
-    glm::mat4 projectionMatrix = GetSceneCamera()->GetProjectionMatrix();
-    int loc_projection_matrix = glGetUniformLocation(shader->program, "Projection");
-    glUniformMatrix4fv(loc_projection_matrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
-
-    // Draw the object instanced
-    glBindVertexArray(mesh->GetBuffers()->m_VAO);
-    glDrawElementsInstanced(mesh->GetDrawMode(), static_cast<int>(mesh->indices.size()), GL_UNSIGNED_INT, (void*)0, instances);
 }
 
 
 void Lab2::Update(float deltaTimeSeconds)
 {
-    ClearScreen(glm::vec3(0.121, 0.168, 0.372));
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    ClearScreen();
 
-    Shader *shader = shaders["SurfaceGeneration"];
-    shader->Use();
+    for (auto& l : lights)
+    {
+        // TODO(student): Move the light sources in an orbit around the center of the scene.
+        // The orbit is in the xoz plane. Compute rotationRadians for the current frame 
+        // such that the light sources rotate 6 degrees/second. Use deltaTimeSeconds.
+        float rotationRadians = 0.0f;
 
-    // Send uniforms to shaders
-    glUniform3f(glGetUniformLocation(shader->program, "control_p0"), control_p0.x, control_p0.y, control_p0.z);
-    glUniform3f(glGetUniformLocation(shader->program, "control_p1"), control_p1.x, control_p1.y, control_p1.z);
-    glUniform3f(glGetUniformLocation(shader->program, "control_p2"), control_p2.x, control_p2.y, control_p2.z);
-    glUniform3f(glGetUniformLocation(shader->program, "control_p3"), control_p3.x, control_p3.y, control_p3.z);
-    glUniform1i(glGetUniformLocation(shader->program, "no_of_instances"), no_of_instances);
+        glm::mat4 rotateMatrix = glm::rotate(glm::mat4(1.0f), rotationRadians, glm::vec3(0, 1, 0));
+        l.position = rotateMatrix * glm::vec4(l.position, 1.0f);
+    }
 
-    // TODO(student): Send to the shaders the number of points that approximate
-    // a curve (no_of_generated_points), as well as the characteristics for
-    // creating the translation/rotation surfaces (max_translate, max_rotate).
-    // NOTE: If you're feeling lost and need a frame of reference while doing
-    // this lab, go to `FrameEnd()` and activate `DrawCoordinateSystem()`.
 
-    Mesh* mesh = meshes["surface"];
+    // ------------------------------------------------------------------------
+    // Deferred rendering pass
+    {
+        frameBuffer->Bind();
 
-    // Draw the object instanced
-    RenderMeshInstanced(mesh, shader, glm::mat4(1), no_of_instances);
+        auto shader = shaders["Render2Texture"];
+
+        TextureManager::GetTexture("default.png")->BindToTextureUnit(GL_TEXTURE0);
+
+        // Render scene objects
+        RenderMesh(meshes["box"], shader, glm::vec3(1.5, 0.5f, 0), glm::vec3(0.5f));
+        RenderMesh(meshes["box"], shader, glm::vec3(0, 1.05f, 0), glm::vec3(2));
+        RenderMesh(meshes["box"], shader, glm::vec3(-2, 1.5f, 0));
+        RenderMesh(meshes["sphere"], shader, glm::vec3(-4, 1, 1));
+
+        // Render a simple point light bulb for each light (for debugging purposes)
+        TextureManager::GetTexture("default.png")->BindToTextureUnit(GL_TEXTURE0);
+        for (auto &l : lights)
+        {
+            auto model = glm::translate(glm::mat4(1), l.position);
+            model = glm::scale(model, glm::vec3(0.2f));
+            RenderMesh(meshes["sphere"], shader, model);
+        }
+
+        TextureManager::GetTexture("ground.jpg")->BindToTextureUnit(GL_TEXTURE0);
+        RenderMesh(meshes["plane"], shader, glm::vec3(0, 0, 0), glm::vec3(0.5f));
+    }
+
+    // ------------------------------------------------------------------------
+    // Lighting pass
+    {
+        glm::vec3 ambientLight(0.2f);
+        //Set the initial light accumulation in each pixel to be equal to the ambient light.
+        lightBuffer->SetClearColor(glm::vec4(ambientLight.x, ambientLight.y, ambientLight.z, 1.0f));
+        lightBuffer->Bind();
+        glClearColor(0, 0, 0, 1);
+
+        // Enable buffer color accumulation
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendEquation(GL_FUNC_ADD);
+        glBlendFunc(GL_ONE, GL_ONE);
+
+        auto shader = shaders["LightPass"];
+        shader->Use();
+
+        {
+            int texturePositionsLoc = shader->GetUniformLocation("texture_position");
+            glUniform1i(texturePositionsLoc, 0);
+            frameBuffer->BindTexture(0, GL_TEXTURE0);
+        }
+
+        {
+            int textureNormalsLoc = shader->GetUniformLocation("texture_normal");
+            glUniform1i(textureNormalsLoc, 1);
+            frameBuffer->BindTexture(1, GL_TEXTURE0 + 1);
+        }
+
+        auto camera = GetSceneCamera();
+        glm::vec3 cameraPos = camera->m_transform->GetWorldPosition();
+        int loc_eyePosition = shader->GetUniformLocation("eye_position");
+        glUniform3fv(loc_eyePosition, 1, glm::value_ptr(cameraPos));
+
+        auto resolution = window->GetResolution();
+        int loc_resolution = shader->GetUniformLocation("resolution");
+        glUniform2i(loc_resolution, resolution.x, resolution.y);
+
+        //Front face culling
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT);
+
+        for (auto& lightInfo : lights)
+        {
+            // TODO(student): Set the shader uniforms 'light_position', 'light_color' and 'light_radius'
+            // with the values from the light source. Use shader 'shader'.
+            
+
+
+            // TODO(student): Draw the mesh "sphere" at the position of the light source
+            // and scaled 2 times the light source radius.
+            // Use RenderMesh(mesh, shader, position, scale). Use shader 'shader'.
+
+        }
+
+        glDisable(GL_CULL_FACE);
+
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
+
+    // ------------------------------------------------------------------------
+    // Composition pass
+    {
+        FrameBuffer::BindDefault();
+
+        auto shader = shaders["Composition"];
+        shader->Use();
+
+        int outputTypeLoc = shader->GetUniformLocation("output_type");
+        glUniform1i(outputTypeLoc, outputType);
+
+        {
+            int texturePositionsLoc = shader->GetUniformLocation("texture_position");
+            glUniform1i(texturePositionsLoc, 1);
+            frameBuffer->BindTexture(0, GL_TEXTURE0 + 1);
+        }
+
+        {
+            int textureNormalsLoc = shader->GetUniformLocation("texture_normal");
+            glUniform1i(textureNormalsLoc, 2);
+            frameBuffer->BindTexture(1, GL_TEXTURE0 + 2);
+        }
+
+        {
+            int textureColorLoc = shader->GetUniformLocation("texture_color");
+            glUniform1i(textureColorLoc, 3);
+            frameBuffer->BindTexture(2, GL_TEXTURE0 + 3);
+        }
+
+        {
+            int textureDepthLoc = shader->GetUniformLocation("texture_depth");
+            glUniform1i(textureDepthLoc, 4);
+            frameBuffer->BindDepthTexture(GL_TEXTURE0 + 4);
+        }
+
+        {
+            int textureLightLoc = shader->GetUniformLocation("texture_light");
+            glUniform1i(textureLightLoc, 5);
+            lightBuffer->BindTexture(0, GL_TEXTURE0 + 5);
+        }
+
+        // Render the object again but with different properties
+        RenderMesh(meshes["quad"], shader, glm::vec3(0, 0, 0));
+    }
 }
 
 
 void Lab2::FrameEnd()
 {
-#if 0
     DrawCoordinateSystem();
-#endif
+}
+
+
+void Lab2::LoadShader(const std::string &name)
+{
+    std::string shaderPath = PATH_JOIN(window->props.selfDir, SOURCE_PATH::M2, "lab2", "shaders");
+
+    // Create a shader program for particle system
+    {
+        Shader *shader = new Shader(name);
+        shader->AddShader(PATH_JOIN(shaderPath, name + ".VS.glsl"), GL_VERTEX_SHADER);
+        shader->AddShader(PATH_JOIN(shaderPath, name + ".FS.glsl"), GL_FRAGMENT_SHADER);
+
+        shader->CreateAndLink();
+        shaders[shader->GetName()] = shader;
+    }
 }
 
 
@@ -158,51 +291,21 @@ void Lab2::FrameEnd()
 void Lab2::OnInputUpdate(float deltaTime, int mods)
 {
     // Treat continuous update based on input
-
-    // You can move the control points around by using the dedicated key,
-    // in combination with Ctrl, Shift, or both.
-    float delta = deltaTime;
-    auto keyMaps = std::vector<std::pair<glm::vec3 &, uint32_t>>
-    {
-        { control_p0, GLFW_KEY_1 },
-        { control_p1, GLFW_KEY_2 },
-        { control_p2, GLFW_KEY_3 },
-        { control_p3, GLFW_KEY_4 }
-    };
-
-    for (const auto &k : keyMaps)
-    {
-        if (window->KeyHold(k.second))
-        {
-            if (mods & GLFW_MOD_SHIFT && mods & GLFW_MOD_CONTROL)
-            {
-                k.first.y -= delta;
-            }
-            else if (mods & GLFW_MOD_CONTROL)
-            {
-                k.first.y += delta;
-            }
-            else if (mods & GLFW_MOD_SHIFT)
-            {
-                k.first.x -= delta;
-            }
-            else
-            {
-                k.first.x += delta;
-            }
-
-            std::cout << glm::vec2(control_p0) << glm::vec2(control_p1) << glm::vec2(control_p2) << glm::vec2(control_p3) << "\n";
-        }
-    }
 }
 
 
 void Lab2::OnKeyPress(int key, int mods)
 {
-    // TODO(student): Use keys to change the number of instances and the
-    // number of generated points. Avoid the camera keys, and avoid the
-    // the keys from `OnInputUpdate`.
+    // Add key press event
 
+    // These are the key mappings for compositing different passes.
+    // What does each key seem to activate? Where can you find the
+    // answer? Examine the source code to find out!
+    int index = key - GLFW_KEY_0;
+    if (index >= 0 && index <= 9)
+    {
+        outputType = index;
+    }
 }
 
 
@@ -239,4 +342,6 @@ void Lab2::OnMouseScroll(int mouseX, int mouseY, int offsetX, int offsetY)
 void Lab2::OnWindowResize(int width, int height)
 {
     // Treat window resize event
+    frameBuffer->Resize(width, height, 32);
+    lightBuffer->Resize(width, height, 32);
 }

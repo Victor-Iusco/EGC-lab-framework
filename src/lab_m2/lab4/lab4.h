@@ -1,9 +1,6 @@
 #pragma once
 
-#include <string>
-
 #include "components/simple_scene.h"
-#include "core/gpu/particle_effect.h"
 
 
 namespace m2
@@ -21,9 +18,7 @@ namespace m2
         void Update(float deltaTimeSeconds) override;
         void FrameEnd() override;
 
-        void LoadShader(const std::string& name, 
-            const std::string& VS, const std::string& FS, const std::string& GS="",
-            bool hasGeomtery = false);
+        void RenderMeshInstanced(Mesh *mesh, Shader *shader, const glm::mat4 &modelMatrix, int instances, const glm::vec3 &color = glm::vec3(1));
 
         void OnInputUpdate(float deltaTime, int mods) override;
         void OnKeyPress(int key, int mods) override;
@@ -34,16 +29,10 @@ namespace m2
         void OnMouseScroll(int mouseX, int mouseY, int offsetX, int offsetY) override;
         void OnWindowResize(int width, int height) override;
 
-        void ResetParticlesFireworks(int xSize, int ySize, int zSize);
-        void ResetParticlesRainSnow(int xSize, int ySize, int zSize);
-        void ResetParticlesFire(float radius);
-
      protected:
-        glm::mat4 modelMatrix;
-        glm::vec3 generator_position;
-        GLenum polygonMode;
-        int scene;
-        float offset;
-
+        // Info about the generated surfaces
+        glm::vec3 control_p0, control_p1, control_p2, control_p3;
+        unsigned int no_of_generated_points, no_of_instances;
+        float max_translate, max_rotate;
     };
 }   // namespace m2

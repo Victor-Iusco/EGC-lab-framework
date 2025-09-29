@@ -2,16 +2,50 @@
 
 #include <vector>
 #include <iostream>
+#include <limits>
 
 using namespace std;
 using namespace m2;
 
 
-//Generates a random value between 0 and 1.
-inline float Rand01()
+struct Particle
 {
-    return rand() / static_cast<float>(RAND_MAX);
-}
+    glm::vec4 position;
+    glm::vec4 speed;
+    glm::vec4 initialPos;
+    glm::vec4 initialSpeed;
+    float delay;
+    float initialDelay;
+    float lifetime;
+    float initialLifetime;
+
+    Particle() {}
+
+    Particle(const glm::vec4 &pos, const glm::vec4 &speed)
+    {
+        SetInitial(pos, speed);
+    }
+
+    void SetInitial(const glm::vec4 &pos, const glm::vec4 &speed,
+        float delay = 0, float lifetime = 0)
+    {
+        position = pos;
+        initialPos = pos;
+
+        this->speed = speed;
+        initialSpeed = speed;
+
+        this->delay = delay;
+        initialDelay = delay;
+
+        this->lifetime = lifetime;
+        initialLifetime = lifetime;
+    }
+};
+
+
+ParticleEffect<Particle> *particleEffect;
+
 
 /*
  *  To find out more about `FrameStart`, `Update`, `FrameEnd`
@@ -31,250 +65,257 @@ Lab5::~Lab5()
 
 void Lab5::Init()
 {
-    outputType = 0;
-
     auto camera = GetSceneCamera();
-    camera->SetPositionAndRotation(glm::vec3(0, 2, 3.5), glm::quat(glm::vec3(-20 * TO_RADIANS, 0, 0)));
+    camera->SetPositionAndRotation(glm::vec3(0, 8, 8), glm::quat(glm::vec3(-40 * TO_RADIANS, 0, 0)));
     camera->Update();
 
-    TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES), "ground.jpg");
-
-    // Load a mesh from file into GPU memory
     {
         Mesh* mesh = new Mesh("box");
         mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "box.obj");
         meshes[mesh->GetMeshID()] = mesh;
     }
 
+    // Load textures
     {
-        Mesh* mesh = new Mesh("plane");
-        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "plane50.obj");
-        mesh->UseMaterials(false);
-        meshes[mesh->GetMeshID()] = mesh;
+        TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES), "particle2.png");
+
+        // TODO(student): Load images "rain.png", "snowflake.png" and "fire.png" as
+        // textures, similar to "particle2.png", loaded above. The images can be
+        // found in the same directory as "particle2.png"
+
     }
 
-    // Load a mesh from file into GPU memory
+    LoadShader("Fireworks", "Particle_fireworks", "Particle_simple", "Particle", true);
+    LoadShader("RainSnow", "Particle_rain_snow", "Particle_simple", "Particle", true);
+    LoadShader("Fire", "Particle_fire", "Particle_multiple_textures", "Particle", true);
+
+    ResetParticlesFireworks(20,20,20);
+
+    generator_position = glm::vec3(0, 0, 0);
+    scene = 0;
+    offset = 0.05;
+}
+
+void Lab5::ResetParticlesFireworks(int xSize, int ySize, int zSize)
+{
+    unsigned int nrParticles = 5000;
+
+    particleEffect = new ParticleEffect<Particle>();
+    particleEffect->Generate(nrParticles, true);
+
+    auto particleSSBO = particleEffect->GetParticleBuffer();
+    Particle* data = const_cast<Particle*>(particleSSBO->GetBuffer());
+
+    int xhSize = xSize / 2;
+    int yhSize = ySize / 2;
+    int zhSize = zSize / 2;
+
+    for (unsigned int i = 0; i < nrParticles; i++)
     {
-        Mesh* mesh = new Mesh("sphere");
-        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "sphere.obj");
-        mesh->UseMaterials(false);
-        meshes[mesh->GetMeshID()] = mesh;
+        glm::vec4 pos(1);
+        pos.x = (rand() % xSize - xhSize) / 10.0f;
+        pos.y = (rand() % ySize - yhSize) / 10.0f;
+        pos.z = (rand() % zSize - zhSize) / 10.0f;
+
+        glm::vec4 speed(0);
+        speed.x = (rand() % 20 - 10) / 10.0f;
+        speed.z = (rand() % 20 - 10) / 10.0f;
+        speed.y = rand() % 2 + 2.0f;
+
+        data[i].SetInitial(pos, speed);
     }
 
+    particleSSBO->SetBufferData(data);
+}
+
+void Lab5::ResetParticlesRainSnow(int xSize, int ySize, int zSize)
+{
+    unsigned int nrParticles = 5000;
+
+    particleEffect = new ParticleEffect<Particle>();
+    particleEffect->Generate(nrParticles, true);
+
+    auto particleSSBO = particleEffect->GetParticleBuffer();
+    Particle* data = const_cast<Particle*>(particleSSBO->GetBuffer());
+
+
+    int xhSize = xSize / 2;
+    int yhSize = ySize / 2;
+    int zhSize = zSize / 2;
+
+    for (unsigned int i = 0; i < nrParticles; i++)
     {
-        Mesh* mesh = new Mesh("quad");
-        mesh->LoadMesh(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::MODELS, "primitives"), "quad.obj");
-        mesh->UseMaterials(false);
-        meshes[mesh->GetMeshID()] = mesh;
+        glm::vec4 pos(1);
+        pos.x = (rand() % xSize - xhSize) / 10.0f;
+        pos.y = (rand() % ySize - yhSize) / 10.0f;
+        pos.z = (rand() % zSize - zhSize) / 10.0f;
+
+        glm::vec4 speed(0);
+        speed.x = - (rand() % 20 - 10) / 10.0f;
+        speed.z = - (rand() % 20 - 10) / 10.0f;
+        speed.y = - (rand() % 2 + 2.0f);
+
+        float delay = (rand() % 100 / 100.0f) * 3.0f;
+
+        data[i].SetInitial(pos, speed, delay);
     }
 
-    LoadShader("Render2Texture");
-    LoadShader("Composition");
-    LoadShader("LightPass");
-
-    auto resolution = window->GetResolution();
-
-    frameBuffer = new FrameBuffer();
-    frameBuffer->Generate(resolution.x, resolution.y, 3);
-    //frameBuffer contains 3 textures (position, normal and color)
-
-    lightBuffer = new FrameBuffer();
-    lightBuffer->Generate(resolution.x, resolution.y, 1, false);
-    //lightBuffer contains 1 texture (light accumulation)
-
-    for (int i = 0; i < 40; ++i)
-    {
-        LightInfo lightInfo;
-
-        // TODO(student): Set lightInfo with random position, random color
-        // and a random radius for each light source.
-        // You can use the Rand01 function defined above.
-        // The chosen position is between (-10, 0, -10) and (10, 3, 10)
-        // The chosen color is between (0, 0, 0) and (1, 1, 1).
-        // The chosen radius is between 3 and 4.
-
-        lightInfo.position = glm::vec3(0.0f);
-        lightInfo.color = glm::vec3(0.0f);
-        lightInfo.radius = 1.0f;
-
-        lights.push_back(lightInfo);
-    }
+    particleSSBO->SetBufferData(data);
 }
 
 
+void Lab5::ResetParticlesFire(float radius)
+{
+    unsigned int nrParticles = 5000;
+
+    particleEffect = new ParticleEffect<Particle>();
+    particleEffect->Generate(nrParticles, true);
+
+    auto particleSSBO = particleEffect->GetParticleBuffer();
+    Particle* data = const_cast<Particle*>(particleSSBO->GetBuffer());
+
+    for (unsigned int i = 0; i < nrParticles; i++)
+    {
+        glm::vec3 pos(1);
+        pos.x = (rand() % 100 - 50)/ 100.0f ;
+        pos.y = (rand() % 100 - 50)/ 100.0f;
+        pos.z = (rand() % 100 - 50)/ 100.0f;
+        pos = glm::normalize(pos) * radius ;
+
+        glm::vec3 speed(0);
+        speed = glm::normalize(glm::vec3(0, 5, 0) - glm::vec3(pos));
+        speed *= (rand() % 100 / 100.0f);
+        speed += glm::vec3(rand() % 5 / 5.0f, rand() % 5 / 5.0f, rand() % 5 / 5.0f) * 0.2f;
+
+        float lifetime = 1 + (rand() % 100 / 100.0f);
+
+        data[i].SetInitial(glm::vec4 (pos, 1), glm::vec4 (speed, 0), 0, lifetime);
+    }
+
+    particleSSBO->SetBufferData(data);
+}
+
 void Lab5::FrameStart()
 {
+    // Clears the color buffer (using the previously set color) and depth buffer
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glm::ivec2 resolution = window->GetResolution();
+    // Sets the screen area where to draw
+    glViewport(0, 0, resolution.x, resolution.y);
 }
 
 
 void Lab5::Update(float deltaTimeSeconds)
 {
-    ClearScreen();
+    glLineWidth(3);
 
-    for (auto& l : lights)
+    glEnable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glBlendFunc(GL_ONE, GL_ONE);
+    glBlendEquation(GL_FUNC_ADD);
+    if (scene == 0)
     {
-        // TODO(student): Move the light sources in an orbit around the center of the scene.
-        // The orbit is in the xoz plane. Compute rotationRadians for the current frame 
-        // such that the light sources rotate 6 degrees/second. Use deltaTimeSeconds.
-        float rotationRadians = 0.0f;
+        auto shader = shaders["Fireworks"];
+        if (shader->GetProgramID())
+        {
+            shader->Use();
 
-        glm::mat4 rotateMatrix = glm::rotate(glm::mat4(1.0f), rotationRadians, glm::vec3(0, 1, 0));
-        l.position = rotateMatrix * glm::vec4(l.position, 1.0f);
+            TextureManager::GetTexture("particle2.png")->BindToTextureUnit(GL_TEXTURE0);
+            particleEffect->Render(GetSceneCamera(), shader);
+
+            // TODO(student): Send uniforms generator_position,
+            // deltaTime and offset to the shader
+
+        }
     }
 
-
-    // ------------------------------------------------------------------------
-    // Deferred rendering pass
+    if (scene == 1)
     {
-        frameBuffer->Bind();
-
-        auto shader = shaders["Render2Texture"];
-
-        TextureManager::GetTexture("default.png")->BindToTextureUnit(GL_TEXTURE0);
-
-        // Render scene objects
-        RenderMesh(meshes["box"], shader, glm::vec3(1.5, 0.5f, 0), glm::vec3(0.5f));
-        RenderMesh(meshes["box"], shader, glm::vec3(0, 1.05f, 0), glm::vec3(2));
-        RenderMesh(meshes["box"], shader, glm::vec3(-2, 1.5f, 0));
-        RenderMesh(meshes["sphere"], shader, glm::vec3(-4, 1, 1));
-
-        // Render a simple point light bulb for each light (for debugging purposes)
-        TextureManager::GetTexture("default.png")->BindToTextureUnit(GL_TEXTURE0);
-        for (auto &l : lights)
+        auto shader = shaders["RainSnow"];
+        if (shader->GetProgramID())
         {
-            auto model = glm::translate(glm::mat4(1), l.position);
-            model = glm::scale(model, glm::vec3(0.2f));
-            RenderMesh(meshes["sphere"], shader, model);
-        }
+            shader->Use();
 
-        TextureManager::GetTexture("ground.jpg")->BindToTextureUnit(GL_TEXTURE0);
-        RenderMesh(meshes["plane"], shader, glm::vec3(0, 0, 0), glm::vec3(0.5f));
+            // TODO(student): Send correct texture for snow
+            TextureManager::GetTexture("particle2.png")->BindToTextureUnit(GL_TEXTURE0);
+            particleEffect->Render(GetSceneCamera(), shader);
+
+            // TODO(student): Send uniforms generator_position,
+            // deltaTime and offset to the shader
+
+        }
     }
 
-    // ------------------------------------------------------------------------
-    // Lighting pass
+    if (scene == 2)
     {
-        glm::vec3 ambientLight(0.2f);
-        //Set the initial light accumulation in each pixel to be equal to the ambient light.
-        lightBuffer->SetClearColor(glm::vec4(ambientLight.x, ambientLight.y, ambientLight.z, 1.0f));
-        lightBuffer->Bind();
-        glClearColor(0, 0, 0, 1);
-
-        // Enable buffer color accumulation
-        glDepthMask(GL_FALSE);
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendFunc(GL_ONE, GL_ONE);
-
-        auto shader = shaders["LightPass"];
-        shader->Use();
-
+        auto shader = shaders["RainSnow"];
+        if (shader->GetProgramID())
         {
-            int texturePositionsLoc = shader->GetUniformLocation("texture_position");
-            glUniform1i(texturePositionsLoc, 0);
-            frameBuffer->BindTexture(0, GL_TEXTURE0);
-        }
+            shader->Use();
 
-        {
-            int textureNormalsLoc = shader->GetUniformLocation("texture_normal");
-            glUniform1i(textureNormalsLoc, 1);
-            frameBuffer->BindTexture(1, GL_TEXTURE0 + 1);
-        }
+            // TODO(student): Send correct texture for rain
+            TextureManager::GetTexture("particle2.png")->BindToTextureUnit(GL_TEXTURE0);
+            particleEffect->Render(GetSceneCamera(), shader);
 
-        auto camera = GetSceneCamera();
-        glm::vec3 cameraPos = camera->m_transform->GetWorldPosition();
-        int loc_eyePosition = shader->GetUniformLocation("eye_position");
-        glUniform3fv(loc_eyePosition, 1, glm::value_ptr(cameraPos));
-
-        auto resolution = window->GetResolution();
-        int loc_resolution = shader->GetUniformLocation("resolution");
-        glUniform2i(loc_resolution, resolution.x, resolution.y);
-
-        //Front face culling
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_FRONT);
-
-        for (auto& lightInfo : lights)
-        {
-            // TODO(student): Set the shader uniforms 'light_position', 'light_color' and 'light_radius'
-            // with the values from the light source. Use shader 'shader'.
-            
-
-
-            // TODO(student): Draw the mesh "sphere" at the position of the light source
-            // and scaled 2 times the light source radius.
-            // Use RenderMesh(mesh, shader, position, scale). Use shader 'shader'.
+            // TODO(student): Send uniforms generator_position,
+            // deltaTime and offset to the shader
 
         }
-
-        glDisable(GL_CULL_FACE);
-
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
     }
 
-    // ------------------------------------------------------------------------
-    // Composition pass
+    if (scene == 3)
     {
-        FrameBuffer::BindDefault();
-
-        auto shader = shaders["Composition"];
-        shader->Use();
-
-        int outputTypeLoc = shader->GetUniformLocation("output_type");
-        glUniform1i(outputTypeLoc, outputType);
-
+        auto shader = shaders["Fire"];
+        if (shader->GetProgramID())
         {
-            int texturePositionsLoc = shader->GetUniformLocation("texture_position");
-            glUniform1i(texturePositionsLoc, 1);
-            frameBuffer->BindTexture(0, GL_TEXTURE0 + 1);
-        }
+            shader->Use();
+            // TODO(student): Send correct texture for fire
+            TextureManager::GetTexture("particle2.png")->BindToTextureUnit(GL_TEXTURE0);
+            particleEffect->Render(GetSceneCamera(), shader);
 
-        {
-            int textureNormalsLoc = shader->GetUniformLocation("texture_normal");
-            glUniform1i(textureNormalsLoc, 2);
-            frameBuffer->BindTexture(1, GL_TEXTURE0 + 2);
-        }
+            // TODO(student): Send uniforms generator_position,
+            // deltaTime and offset to the shader
 
-        {
-            int textureColorLoc = shader->GetUniformLocation("texture_color");
-            glUniform1i(textureColorLoc, 3);
-            frameBuffer->BindTexture(2, GL_TEXTURE0 + 3);
         }
+    }
 
-        {
-            int textureDepthLoc = shader->GetUniformLocation("texture_depth");
-            glUniform1i(textureDepthLoc, 4);
-            frameBuffer->BindDepthTexture(GL_TEXTURE0 + 4);
-        }
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
 
-        {
-            int textureLightLoc = shader->GetUniformLocation("texture_light");
-            glUniform1i(textureLightLoc, 5);
-            lightBuffer->BindTexture(0, GL_TEXTURE0 + 5);
-        }
-
-        // Render the object again but with different properties
-        RenderMesh(meshes["quad"], shader, glm::vec3(0, 0, 0));
+    {
+        glm::mat4 model = glm::translate(glm::mat4(1), generator_position);
+        if (scene == 1 || scene == 2)
+            model = glm::scale(model, glm::vec3(10,0.5,0.5));
+        else
+            model = glm::scale(model, glm::vec3(0.5, 0.5, 0.5));
+        RenderMesh(meshes["box"], shaders["Simple"], model);
     }
 }
 
 
 void Lab5::FrameEnd()
 {
+#if 0
     DrawCoordinateSystem();
+#endif
 }
 
 
-void Lab5::LoadShader(const std::string &name)
+void Lab5::LoadShader(const std::string& name, const std::string &VS, const std::string& FS, const std::string& GS,  bool hasGeomtery)
 {
     std::string shaderPath = PATH_JOIN(window->props.selfDir, SOURCE_PATH::M2, "lab5", "shaders");
 
     // Create a shader program for particle system
     {
         Shader *shader = new Shader(name);
-        shader->AddShader(PATH_JOIN(shaderPath, name + ".VS.glsl"), GL_VERTEX_SHADER);
-        shader->AddShader(PATH_JOIN(shaderPath, name + ".FS.glsl"), GL_FRAGMENT_SHADER);
+        shader->AddShader(PATH_JOIN(shaderPath, VS + ".VS.glsl"), GL_VERTEX_SHADER);
+        shader->AddShader(PATH_JOIN(shaderPath, FS + ".FS.glsl"), GL_FRAGMENT_SHADER);
+        if (hasGeomtery)
+        {
+            shader->AddShader(PATH_JOIN(shaderPath, GS + ".GS.glsl"), GL_GEOMETRY_SHADER);
+        }
 
         shader->CreateAndLink();
         shaders[shader->GetName()] = shader;
@@ -291,20 +332,58 @@ void Lab5::LoadShader(const std::string &name)
 void Lab5::OnInputUpdate(float deltaTime, int mods)
 {
     // Treat continuous update based on input
+
+    if (!window->MouseHold(GLFW_MOUSE_BUTTON_2)) {
+        const float speed = 2;
+
+        if (window->KeyHold(GLFW_KEY_A))
+            generator_position.x -= deltaTime * speed;
+        if (window->KeyHold(GLFW_KEY_D))
+            generator_position.x += deltaTime * speed;
+        if (window->KeyHold(GLFW_KEY_W))
+            generator_position.y += deltaTime * speed;
+        if (window->KeyHold(GLFW_KEY_S))
+            generator_position.y -= deltaTime * speed;
+        if (window->KeyHold(GLFW_KEY_R))
+            generator_position.z -= deltaTime * speed;
+        if (window->KeyHold(GLFW_KEY_F))
+            generator_position.z += deltaTime * speed;
+    }
+
+    if (window->KeyHold(GLFW_KEY_Z))
+        offset += deltaTime * 0.1;
+    if (window->KeyHold(GLFW_KEY_X))
+        offset -= deltaTime * 0.1;
+
+
 }
 
 
 void Lab5::OnKeyPress(int key, int mods)
 {
-    // Add key press event
-
-    // These are the key mappings for compositing different passes.
-    // What does each key seem to activate? Where can you find the
-    // answer? Examine the source code to find out!
-    int index = key - GLFW_KEY_0;
-    if (index >= 0 && index <= 9)
+    if (key == GLFW_KEY_1)
     {
-        outputType = index;
+        scene = 0;
+        ResetParticlesFireworks(20,20,20);
+        generator_position = glm::vec3(0, 0, 0);
+    }
+    if (key == GLFW_KEY_2)
+    {
+        scene = 1;
+        ResetParticlesRainSnow(100,10,10);
+        generator_position = glm::vec3(0, 0, 0);
+    }
+    if (key == GLFW_KEY_3)
+    {
+        scene = 2;
+        ResetParticlesRainSnow(100, 10, 10);
+        generator_position = glm::vec3(0, 0, 0);
+    }
+    if (key == GLFW_KEY_4)
+    {
+        scene = 3;
+        ResetParticlesFire(0.25);
+        generator_position = glm::vec3(0, 0, 0);
     }
 }
 
@@ -342,6 +421,4 @@ void Lab5::OnMouseScroll(int mouseX, int mouseY, int offsetX, int offsetY)
 void Lab5::OnWindowResize(int width, int height)
 {
     // Treat window resize event
-    frameBuffer->Resize(width, height, 32);
-    lightBuffer->Resize(width, height, 32);
 }
