@@ -6,7 +6,7 @@ This project is a tiny graphics framework used by the Computer Graphics Departme
 It is currently used as teaching and study material for a number of courses of increasing complexity, including, but not limited to:
 
 -   **`EGC`** Elements of Computer Graphics, BSc year 3 &mdash; [course materials (RO)](https://ocw.cs.pub.ro/courses/egc)
--   **`SPG`** Graphics Processing Systems, BSc year 4 &mdash; [course materials (RO)](https://ocw.cs.pub.ro/courses/spg)
+-   **`PGAPI`** Advanced Graphics Programming and Image Processing, BSc year 4 &mdash; [course materials (RO)](https://ocw.cs.pub.ro/courses/pgapi)
 
 The functionality is split into several modules of increasing difficulty (`m1`, `m2`, etc.).
 
