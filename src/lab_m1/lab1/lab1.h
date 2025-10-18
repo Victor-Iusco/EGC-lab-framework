@@ -28,6 +28,13 @@ namespace m1
         void OnWindowResize(int width, int height) override;
 
         // TODO(student): Class variables go here
+        float red = 0.0f;
+		float green = 0.0f; 
+		float blue = 0.0f;
 
+        std::vector<std::string> meshNames;
+        int currentMeshIndex = 0;
+
+        glm::vec3 meshPosition;
     };
 }   // namespace m1
