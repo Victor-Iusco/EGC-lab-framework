@@ -11,8 +11,8 @@ using namespace m1;
 
 
 /*
- *  To find out more about `FrameStart`, `Update`, `FrameEnd`
- *  and the order in which they are called, see `world.cpp`.
+ * To find out more about `FrameStart`, `Update`, `FrameEnd`
+ * and the order in which they are called, see `world.cpp`.
  */
 
 
@@ -90,13 +90,24 @@ void Lab4::Update(float deltaTimeSeconds)
     glm::ivec2 resolution = window->GetResolution();
     glViewport(0, 0, resolution.x, resolution.y);
 
+    // --- Randarea principală ---
     RenderScene();
     DrawCoordinateSystem();
 
+
+    // --- Randarea în viewport-ul mic ---
+
+    // Golește buffer-ul de adâncime (depth buffer) pentru a nu
+    // se suprapune testele de adâncime din cele două randări.
     glClear(GL_DEPTH_BUFFER_BIT);
+
+    // Setează noul viewport
     glViewport(miniViewportArea.x, miniViewportArea.y, miniViewportArea.width, miniViewportArea.height);
 
     // TODO(student): render the scene again, in the new viewport
+    // ✅ Randăm scena (cuburile)
+    RenderScene();
+    // ✅ Randăm axele de coordonate
     DrawCoordinateSystem();
 }
 
@@ -106,15 +117,47 @@ void Lab4::FrameEnd()
 
 
 /*
- *  These are callback functions. To find more about callbacks and
- *  how they behave, see `input_controller.h`.
+ * These are callback functions. To find more about callbacks and
+ * how they behave, see `input_controller.h`.
  */
 
 
 void Lab4::OnInputUpdate(float deltaTime, int mods)
 {
-    // TODO(student): Add transformation logic
+    // --- Logica de transformare adăugată anterior (rămâne neschimbată) ---
+    float translationSpeed = 2.0f;
+    float scaleSpeed = 1.0f;
+    float rotationSpeed = glm::radians(60.0f);
 
+    // Cubul 1: Translație
+    if (window->KeyHold(GLFW_KEY_A)) translateX -= translationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_D)) translateX += translationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_W)) translateZ -= translationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_S)) translateZ += translationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_R)) translateY += translationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_F)) translateY -= translationSpeed * deltaTime;
+
+    // Cubul 2: Scalare
+    if (window->KeyHold(GLFW_KEY_1)) {
+        float deltaScale = scaleSpeed * deltaTime;
+        scaleX -= deltaScale;
+        scaleY -= deltaScale;
+        scaleZ -= deltaScale;
+    }
+    if (window->KeyHold(GLFW_KEY_2)) {
+        float deltaScale = scaleSpeed * deltaTime;
+        scaleX += deltaScale;
+        scaleY += deltaScale;
+        scaleZ += deltaScale;
+    }
+
+    // Cubul 3: Rotație
+    if (window->KeyHold(GLFW_KEY_3)) angularStepOX += rotationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_4)) angularStepOX -= rotationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_5)) angularStepOY += rotationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_6)) angularStepOY -= rotationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_7)) angularStepOZ += rotationSpeed * deltaTime;
+    if (window->KeyHold(GLFW_KEY_8)) angularStepOZ -= rotationSpeed * deltaTime;
 }
 
 
@@ -136,8 +179,42 @@ void Lab4::OnKeyPress(int key, int mods)
             break;
         }
     }
-    
+
     // TODO(student): Add viewport movement and scaling logic
+    // ✅ Logica pentru viewport
+
+    int moveStep = 10;   // Pixeli de mișcare
+    int scaleStep = 10;  // Pixeli de scalare
+
+    // Mișcare viewport (I, J, K, L)
+    if (key == GLFW_KEY_I) {
+        // Sus (crește Y)
+        miniViewportArea.y += moveStep;
+    }
+    if (key == GLFW_KEY_K) {
+        // Jos (scade Y)
+        miniViewportArea.y -= moveStep;
+    }
+    if (key == GLFW_KEY_J) {
+        // Stânga (scade X)
+        miniViewportArea.x -= moveStep;
+    }
+    if (key == GLFW_KEY_L) {
+        // Dreapta (crește X)
+        miniViewportArea.x += moveStep;
+    }
+
+    // Scalare viewport (U, O)
+    if (key == GLFW_KEY_U) {
+        // Micșorare (Scale Out)
+        miniViewportArea.width -= scaleStep;
+        miniViewportArea.height -= scaleStep;
+    }
+    if (key == GLFW_KEY_O) {
+        // Mărire (Scale In)
+        miniViewportArea.width += scaleStep;
+        miniViewportArea.height += scaleStep;
+    }
 }
 
 
