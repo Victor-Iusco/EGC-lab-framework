@@ -149,7 +149,16 @@ void WindowObject::DisablePointer()
 void WindowObject::SetWindowPosition(glm::ivec2 position)
 {
     props.position = position;
+#if defined(__unix__)
+    // On Wayland, setting window position is not supported
+    const char *waylandDisplay = getenv("WAYLAND_DISPLAY");
+    if (!waylandDisplay)
+    {
+        glfwSetWindowPos(window->handle, position.x, position.y);
+    }
+#else
     glfwSetWindowPos(window->handle, position.x, position.y);
+#endif
 }
 
 
@@ -211,7 +220,8 @@ void WindowObject::FullScreen()
 
 void error_callback(int error, const char* description)
 {
-    fprintf(stderr, "Error: %s\n", description);
+  // Print all other errors for debugging
+    fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
 
