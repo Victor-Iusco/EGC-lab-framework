@@ -19,11 +19,14 @@ WindowObject* Engine::Init(const WindowProperties & props)
 
     glewExperimental = true;
     GLenum err = glewInit();
-    if (GLEW_OK != err)
+    
+    // Allow GLEW_ERROR_NO_GLX_DISPLAY (4) on Wayland/EGL
+    // Issue: https://github.com/thliebig/AppCSXCAD/issues/11
+    if (GLEW_OK != err && err != 4)
     {
         // Serious problem
-        fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
-        exit(0);
+        fprintf(stderr, "GLEW Error %u: %s\n", err, glewGetErrorString(err));
+        exit(1);
     }
 
     TextureManager::Init(window->props.selfDir);
