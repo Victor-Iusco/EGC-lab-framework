@@ -37,5 +37,10 @@ namespace m1
 
         // TODO(student): If you need any other class variables, define them here.
 
+        // Variables for projection
+        bool perspectiveProjection;
+        float fov;
+        float zNear, zFar;
+        float orthoLeft, orthoRight, orthoTop, orthoBottom;
     };
 }   // namespace m1

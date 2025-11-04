@@ -9,8 +9,8 @@ using namespace m1;
 
 
 /*
- *  To find out more about `FrameStart`, `Update`, `FrameEnd`
- *  and the order in which they are called, see `world.cpp`.
+ * To find out more about `FrameStart`, `Update`, `FrameEnd`
+ * and the order in which they are called, see `world.cpp`.
  */
 
 
@@ -45,8 +45,23 @@ void Lab5::Init()
 
     // TODO(student): After you implement the changing of the projection
     // parameters, remove hardcodings of these parameters
-    projectionMatrix = glm::perspective(RADIANS(60), window->props.aspectRatio, 0.01f, 200.0f);
 
+    // Initialize projection parameters
+    perspectiveProjection = true;
+    fov = RADIANS(60);
+    zNear = 0.01f;
+    zFar = 200.0f;
+
+    // Initialize orthographic projection parameters
+    // We'll set a base size and adjust for aspect ratio
+    float orthoSize = 5.0f;
+    orthoTop = orthoSize;
+    orthoBottom = -orthoSize;
+    orthoRight = orthoSize * window->props.aspectRatio;
+    orthoLeft = -orthoSize * window->props.aspectRatio;
+
+    // Set the initial projection matrix
+    projectionMatrix = glm::perspective(fov, window->props.aspectRatio, zNear, zFar);
 }
 
 
@@ -64,6 +79,17 @@ void Lab5::FrameStart()
 
 void Lab5::Update(float deltaTimeSeconds)
 {
+    // Recalculate projection matrix every frame to account for changes
+    if (perspectiveProjection) {
+        projectionMatrix = glm::perspective(fov, window->props.aspectRatio, zNear, zFar);
+    } else {
+        // Adjust ortho bounds based on aspect ratio to prevent distortion
+        float orthoSize = orthoTop; // Use 'orthoTop' as the base size
+        orthoRight = orthoSize * window->props.aspectRatio;
+        orthoLeft = -orthoSize * window->props.aspectRatio;
+        projectionMatrix = glm::ortho(orthoLeft, orthoRight, orthoBottom, orthoTop, zNear, zFar);
+    }
+
     {
         glm::mat4 modelMatrix = glm::mat4(1);
         modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 1, 0));
@@ -125,8 +151,8 @@ void Lab5::RenderMesh(Mesh * mesh, Shader * shader, const glm::mat4 & modelMatri
 
 
 /*
- *  These are callback functions. To find more about callbacks and
- *  how they behave, see `input_controller.h`.
+ * These are callback functions. To find more about callbacks and
+ * how they behave, see `input_controller.h`.
  */
 
 
@@ -139,32 +165,32 @@ void Lab5::OnInputUpdate(float deltaTime, int mods)
 
         if (window->KeyHold(GLFW_KEY_W)) {
             // TODO(student): Translate the camera forward
-
+            camera->MoveForward(cameraSpeed * deltaTime);
         }
 
         if (window->KeyHold(GLFW_KEY_A)) {
             // TODO(student): Translate the camera to the left
-
+            camera->TranslateRight(-cameraSpeed * deltaTime);
         }
 
         if (window->KeyHold(GLFW_KEY_S)) {
             // TODO(student): Translate the camera backward
-
+            camera->MoveForward(-cameraSpeed * deltaTime);
         }
 
         if (window->KeyHold(GLFW_KEY_D)) {
             // TODO(student): Translate the camera to the right
-
+            camera->TranslateRight(cameraSpeed * deltaTime);
         }
 
         if (window->KeyHold(GLFW_KEY_Q)) {
             // TODO(student): Translate the camera downward
-
+            camera->TranslateUpward(-cameraSpeed * deltaTime);
         }
 
         if (window->KeyHold(GLFW_KEY_E)) {
             // TODO(student): Translate the camera upward
-
+            camera->TranslateUpward(cameraSpeed * deltaTime);
         }
     }
 
@@ -173,6 +199,27 @@ void Lab5::OnInputUpdate(float deltaTime, int mods)
     // for any hardcoded projection arguments (can you find any?) and
     // replace them with those extra variables.
 
+    // Use UP and DOWN arrows to change FOV or Ortho size
+    float zoomSpeed = 0.5f;
+    if (window->KeyHold(GLFW_KEY_UP)) {
+        if (perspectiveProjection) {
+            fov += zoomSpeed * deltaTime; // Increase FOV
+        } else {
+            // Zoom in (decrease ortho bounds)
+            orthoTop -= zoomSpeed * deltaTime;
+            orthoBottom += zoomSpeed * deltaTime;
+        }
+    }
+
+    if (window->KeyHold(GLFW_KEY_DOWN)) {
+        if (perspectiveProjection) {
+            fov -= zoomSpeed * deltaTime; // Decrease FOV
+        } else {
+            // Zoom out (increase ortho bounds)
+            orthoTop += zoomSpeed * deltaTime;
+            orthoBottom -= zoomSpeed * deltaTime;
+        }
+    }
 }
 
 
@@ -183,8 +230,12 @@ void Lab5::OnKeyPress(int key, int mods)
     {
         renderCameraTarget = !renderCameraTarget;
     }
-    // TODO(student): Switch projections
 
+    // TODO(student): Switch projections
+    if (key == GLFW_KEY_P)
+    {
+        perspectiveProjection = !perspectiveProjection;
+    }
 }
 
 
@@ -208,7 +259,8 @@ void Lab5::OnMouseMove(int mouseX, int mouseY, int deltaX, int deltaY)
             // TODO(student): Rotate the camera in first-person mode around
             // OX and OY using `deltaX` and `deltaY`. Use the sensitivity
             // variables for setting up the rotation speed.
-
+            camera->RotateFirstPerson_OY(-sensivityOX * deltaX); // Yaw
+            camera->RotateFirstPerson_OX(-sensivityOY * deltaY); // Pitch
         }
 
         if (window->GetSpecialKeyState() & GLFW_MOD_CONTROL) {
@@ -216,7 +268,8 @@ void Lab5::OnMouseMove(int mouseX, int mouseY, int deltaX, int deltaY)
             // TODO(student): Rotate the camera in third-person mode around
             // OX and OY using `deltaX` and `deltaY`. Use the sensitivity
             // variables for setting up the rotation speed.
-
+            camera->RotateThirdPerson_OY(-sensivityOX * deltaX); // Yaw
+            camera->RotateThirdPerson_OX(-sensivityOY * deltaY); // Pitch
         }
     }
 }
@@ -241,4 +294,7 @@ void Lab5::OnMouseScroll(int mouseX, int mouseY, int offsetX, int offsetY)
 
 void Lab5::OnWindowResize(int width, int height)
 {
+    // We must update the aspect ratio for the projection matrix
+    // This is handled automatically in Update() by recalculating
+    // the matrix every frame using window->props.aspectRatio
 }
